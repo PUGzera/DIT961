@@ -13,14 +13,16 @@ data Bid
   | NewSell Person Price Price -- Person changes sell bid
   deriving Show
 
-data BuyBid = BuyBid Person Price
-data SellBid = SellBid Person Price
+data BuyBid = BuyBid Person Price | NoBuyBid
+data SellBid = SellBid Person Price | NoSellBid
 
 
 instance Show BuyBid where
+  show NoBuyBid = ""
   show (BuyBid n p) = n ++ " " ++ show p
 
 instance Show SellBid where
+  show NoSellBid = ""
   show (SellBid n p) = n ++ " " ++ show p 
 
 instance Eq BuyBid where
@@ -43,16 +45,9 @@ instance Ord BuyBid where
 data OrderBook = OrderBook (SkewHeap BuyBid) (SkewHeap SellBid)
 
 instance Show OrderBook where
-  show (OrderBook Leaf Leaf) = "Order book:\nSellers:\nBuyers:"
-  show (OrderBook bs Leaf)   = "Order book:\n" ++
-                               "Sellers:\n" ++
-                               "Buyers: " ++ show bs
-  show (OrderBook Leaf ss)   = "Order book:\n" ++
-                               "Sellers: " ++ show ss ++ "\n" ++
-                               "Buyers:"
-  show (OrderBook bs ss)     = "Order book:\n" ++
-                               "Sellers: " ++ show ss ++ "\n" ++
-                               "Buyers: " ++ show bs  
+  show (OrderBook bs ss) = "Order book:\n" ++
+                           "Sellers: " ++ show ss ++ "\n" ++
+                           "Buyers: " ++ show bs  
 
 
 type Person = String
@@ -108,78 +103,51 @@ main = do
 
 trade :: [Bid] -> IO ()
 trade bs = trade' (OrderBook Leaf Leaf) bs
-
-trade' :: OrderBook -> [Bid] -> IO()
-trade' (OrderBook Leaf Leaf) [] = print "No transactions found"
-trade' orderbook []             = transaction orderbook (OrderBook Leaf Leaf)
-trade' (OrderBook Leaf Leaf) (x:xs) = case x of
-  (Buy name price)  -> trade' (OrderBook (insert Leaf (BuyBid name price)) Leaf) xs
-  (Sell name price) -> trade' (OrderBook Leaf (insert Leaf (SellBid name price))) xs
-trade' (OrderBook Leaf ss) (x:xs) = case x of
-  (Buy name price)  -> do
-                        let s = extractMin ss
-                        let b = (BuyBid name price)
-                        attemptPurchase b s (trade' (OrderBook Leaf (remove ss)) xs) (trade' (OrderBook (insert Leaf (BuyBid name price)) ss) xs)
-  (Sell name price) -> trade' (OrderBook Leaf (insert ss (SellBid name price))) xs
-  (NewSell name oldPrice newPrice) -> trade' (OrderBook Leaf (insert (removeVal ss (SellBid name oldPrice)) (SellBid name newPrice))) xs  
-
-trade' (OrderBook bs Leaf) (x:xs) = case x of
-  (Buy name price)  -> trade' (OrderBook (insert bs (BuyBid name price)) Leaf) xs
-  (Sell name price) -> do
-                        let b = extractMin bs
-                        let s = (SellBid name price)
-                        attemptPurchase b s (trade' (OrderBook (remove bs) Leaf) xs) (trade' (OrderBook bs (insert Leaf (SellBid name price))) xs)
-  (NewBuy name oldPrice newPrice)  -> trade' (OrderBook (insert (removeVal bs (BuyBid name oldPrice)) (BuyBid name newPrice)) Leaf) xs
-trade' (OrderBook bs ss) (x:xs) = case x of
-  (Buy name price) -> do
-                      let s = extractMin ss
-                      let b = (BuyBid name price)
-                      attemptPurchase b s (trade' (OrderBook bs (remove ss)) xs) (trade' (OrderBook (insert bs (BuyBid name price)) ss) xs)   
-  (Sell name price) -> do
-                       let b = extractMin bs
-                       let s = (SellBid name price)
-                       attemptPurchase b s (trade' (OrderBook (remove bs) ss) xs) (trade' (OrderBook bs (insert ss (SellBid name price))) xs)                      
-  (NewBuy name oldPrice newPrice) -> do
-                                      let s = extractMin ss
-                                      let b = (BuyBid name newPrice)
-                                      attemptPurchase b s (trade' (OrderBook (removeVal bs (BuyBid name oldPrice)) (remove ss)) xs) (trade' (OrderBook (insert (removeVal bs (BuyBid name oldPrice)) (BuyBid name newPrice)) ss) xs) 
-  (NewSell name oldPrice newPrice) -> do
-                                       let b = extractMin bs
-                                       let s = (SellBid name newPrice) 
-                                       attemptPurchase b s (trade' (OrderBook (remove bs) (removeVal ss (SellBid name oldPrice))) xs) (trade' (OrderBook bs (insert (removeVal ss (SellBid name oldPrice)) (SellBid name newPrice))) xs)   
+    where
+      trade' :: OrderBook -> [Bid] -> IO()
+      trade' (OrderBook Leaf Leaf) []   = print "No transactions"
+      trade' orderbook []               = print orderbook
+      trade' (OrderBook bs ss) (x:xs) = case x of
+        (Buy name price) -> do
+                            let s = case (extractMin ss) of
+                                      Just n  -> n
+                                      Nothing -> NoSellBid
+                            let b = (BuyBid name price)
+                            attemptPurchase b s (trade' (OrderBook bs (remove ss)) xs) (trade' (OrderBook (insert bs (BuyBid name price)) ss) xs)   
+        (Sell name price) -> do
+                            let b = case (extractMin bs) of
+                                      Just n  -> n
+                                      Nothing -> NoBuyBid
+                            let s = (SellBid name price)
+                            attemptPurchase b s (trade' (OrderBook (remove bs) ss) xs) (trade' (OrderBook bs (insert ss (SellBid name price))) xs)                      
+        (NewBuy name oldPrice newPrice) -> do
+                                            let s = case (extractMin ss) of
+                                                      Just n  -> n
+                                                      Nothing -> NoSellBid
+                                            let b = (BuyBid name newPrice)
+                                            attemptPurchase b s (trade' (OrderBook (removeVal bs (BuyBid name oldPrice)) (remove ss)) xs) (trade' (OrderBook (insert (removeVal bs (BuyBid name oldPrice)) (BuyBid name newPrice)) ss) xs) 
+        (NewSell name oldPrice newPrice) -> do
+                                            let b = case (extractMin bs) of
+                                                      Just n  -> n
+                                                      Nothing -> NoBuyBid
+                                            let s = (SellBid name newPrice) 
+                                            attemptPurchase b s (trade' (OrderBook (remove bs) (removeVal ss (SellBid name oldPrice))) xs) (trade' (OrderBook bs (insert (removeVal ss (SellBid name oldPrice)) (SellBid name newPrice))) xs)   
                                                               
 
 
 attemptPurchase :: BuyBid -> SellBid -> IO() -> IO() -> IO()
-attemptPurchase (BuyBid name p) (SellBid name' p') onSuccess onFailure = do
-                                                                          if p >= p' then do
-                                                                            putStrLn $ name ++ " buys from " ++ name' ++ " for " ++ show p ++ "kr"
-                                                                            onSuccess
-                                                                          else do     
-                                                                            onFailure
+attemptPurchase NoBuyBid _ _ onFailure = onFailure
+attemptPurchase _ NoSellBid _ onFailure = onFailure
+attemptPurchase (BuyBid name p) (SellBid name' p') onSuccess onFailure = 
+  do
+    if p >= p' then do
+      putStrLn $ name ++ " buys from " ++ name' ++ " for " ++ show p ++ "kr"
+      onSuccess
+    else do     
+      onFailure
 
-{--trade' :: OrderBook -> [Bid] -> IO ()
-trade' (OrderBook Leaf Leaf) [] = print "No transactions found"
-trade' orderbook []             = transaction orderbook (OrderBook Leaf Leaf)
-trade' (OrderBook bs ss) (x:xs) = 
-  case x of
-    (Buy name price)  -> trade' (OrderBook (insert bs (BuyBid name price)) ss) xs
-    (Sell name price) -> trade' (OrderBook bs (insert ss (SellBid name price))) xs
-    (NewBuy name oldPrice newPrice)  -> trade' (OrderBook (insert (removeVal bs (BuyBid name oldPrice)) (BuyBid name newPrice)) ss) xs
-    (NewSell name oldPrice newPrice) -> trade' (OrderBook bs (insert (removeVal ss (SellBid name oldPrice)) (SellBid name newPrice))) xs --}
 
-transaction :: OrderBook -> OrderBook -> IO()
-transaction (OrderBook bs Leaf) r@(OrderBook bs' ss) = print (OrderBook (merge bs bs') ss)
-transaction (OrderBook Leaf ss) r@(OrderBook bs ss') = print (OrderBook bs (merge ss ss'))
-transaction (OrderBook bs ss) o@(OrderBook bs' ss')  = do
-  let (BuyBid name price)    = extractMin bs
-  let (SellBid name' price') = extractMin ss
-  if price >= price' then do
-    print $ name ++ " buys from " ++ name' ++ " for " ++ show price ++ "kr"
-    transaction (OrderBook (remove bs) (remove ss)) o
-  else do
-    transaction (OrderBook (remove bs) (remove ss)) (OrderBook (insert bs' (extractMin bs)) (insert ss' (extractMin ss))) 
-
+--testing      
 instance Arbitrary Bid where
   arbitrary = do
     name <- elements ["Ada", "David"]
