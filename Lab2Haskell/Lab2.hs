@@ -150,7 +150,7 @@ attemptPurchase (BuyBid name p) (SellBid name' p') onSuccess onFailure =
 --testing      
 instance Arbitrary Bid where
   arbitrary = do
-    name <- elements ["Ada", "David"]
+    name <- elements ["Retard", "Moron"]
     price <- choose(60, 120)
     result <- elements [Buy name price, Sell name price]
     return result
