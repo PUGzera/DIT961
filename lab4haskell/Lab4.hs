@@ -9,33 +9,27 @@ import Data.Maybe
 import System.Environment (getArgs)
 
 shortestPath :: (Show b, Show a, Num b, Ord a, Ord b) => Graph a b -> a -> a -> Maybe ([a], b)
-shortestPath g from to | from == to = Just ([from], 0)
-                       | otherwise  =  Just (shortestPath' g from to [to] visited, cost)
+shortestPath g from to 
+  | from == to = Just ([from], 0)
+  | otherwise = Just $ (until (\(x:_) -> from == x) (\y@(x:_) -> 
+  ((snd . fromJust $ Prelude.lookup x visited):y)) [to], fst . fromJust $ Prelude.lookup to visited)
   where
-    Just (cost, _) = Prelude.lookup to visited
     visited = dijkstras g from
 
-shortestPath' :: (Show b, Show a, Num b, Ord a, Ord b) => Graph a b -> a -> a -> [a] -> [(a, (b, a))] -> [a]
-shortestPath' g from to vs visited
-  | from == to = vs
-  | otherwise  = shortestPath' g from via (via:vs) visited
-  where
-    Just (_, via) = Prelude.lookup to visited
-
 dijkstras :: (Show b, Show a, Num b, Ord a, Ord b) => Graph a b -> a -> [(a, (b, a))]
-dijkstras g@(Graph map) from = visitNeighbours (Prelude.foldr (\a pq -> 
+dijkstras g from = visitNeighbours (Prelude.foldr (\a pq -> 
   case compare from a of
     EQ -> PQ.insert a (0, a) pq
-    _  -> PQ.insert a (20000000, a) pq) PQ.empty (vertices g)) (M.toList map) [] from
+    _  -> PQ.insert a (20000000, a) pq) PQ.empty (vertices g)) g [] from
 
-visitNeighbours :: (Show b, Show a, Num b, Ord a, Ord b) => PQ.PSQ a (b, a) -> [(a, [Edge a b])] -> [(a, (b, a))] -> a -> [(a, (b, a))]
-visitNeighbours pq map visited from
+visitNeighbours :: (Show b, Show a, Num b, Ord a, Ord b) => PQ.PSQ a (b, a) -> Graph a b -> [(a, (b, a))] -> a -> [(a, (b, a))]
+visitNeighbours pq g visited from
   | PQ.size pq < 3 = visitedList
-  | otherwise      = visitNeighbours visitedPQ map visitedList (key minVal)
+  | otherwise      = visitNeighbours visitedPQ g visitedList (key minVal)
   where
-    visitedPQ = PQ.deleteMin $ visit pq (from, fromJust $ Prelude.lookup from map)
-    minVal    = fromJust $ PQ.findMin visitedPQ
-    visitedList = (key minVal, prio minVal):visited
+    visitedPQ      = PQ.deleteMin $ visit pq (from, G.adj from g)
+    minVal         = fromJust $ PQ.findMin visitedPQ
+    visitedList    = (key minVal, prio minVal):visited
     
 visit :: (Show b, Show a, Num b, Ord a, Ord b) => PQ.PSQ a (b, a) -> (a, [Edge a b]) -> PQ.PSQ a (b, a)
 visit pq (x, xs) = (Prelude.foldr (\a pq' ->
@@ -90,4 +84,3 @@ readGraph stopFile linesFile = do
     xs -> Prelude.foldr ($) g $ zipWith f xs (tail xs)  
 
   f x y = addEdge (stopName x) (stopName y) (time y)
-
